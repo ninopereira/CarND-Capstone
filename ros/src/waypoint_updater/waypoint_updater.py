@@ -37,20 +37,47 @@ class WaypointUpdater(object):
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
-                
+        self._pose = None
+        self._waypoints = None
+                        
         rospy.spin()
 
+    def _next_n(self, lst, n, start):
+        rest = len(lst[start:])
+        next = []
+        if rest <= n:
+            next = list(lst[start:] + lst[:n-rest])
+        else:
+            next = list(lst[start:start+n])
+        return next
+
+    def _get_nearest_waypoint_index(self, waypoints, pos):
+        distances = []
+        for wp in waypoints:
+            wp_pos = wp.pose.pose.position
+            distances.append(math.sqrt((wp_pos.x-pos.x)**2 + (wp_pos.y-pos.y)**2))
+        return distances.index(min(distances))
+
+    def publish_waypoints(self, final_wps_list):
+        lane = Lane()
+        lane.waypoints = final_wps_list
+        self.final_waypoints_pub.publish(lane)
+    
     def pose_cb(self, msg):
         self._pose = msg.pose
         pos = self._pose.position
         ori = self._pose.orientation
         rospy.loginfo('Position - x:%s, y:%s', pos.x, pos.y)
         rospy.loginfo('Orientation - z:%s, w:%s', ori.z, ori.w)
+        if self._waypoints != None:
+            idx_nearest = self._get_nearest_waypoint_index(self._waypoints, pos)
+            next_wps = self._next_n(self._waypoints, LOOKAHEAD_WPS, idx_nearest+1)
+            self.publish_waypoints(next_wps)
+                
         
     def waypoints_cb(self, waypoints):
-        # TODO: Implement
-        pass
-
+        self._waypoints = waypoints.waypoints
+          
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
         pass
