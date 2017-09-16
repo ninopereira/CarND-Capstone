@@ -67,11 +67,13 @@ class WaypointUpdater(object):
         self._pose = msg.pose
         pos = self._pose.position
         ori = self._pose.orientation
-        rospy.loginfo('Position - x:%s, y:%s', pos.x, pos.y)
-        rospy.loginfo('Orientation - z:%s, w:%s', ori.z, ori.w)
         if self._waypoints != None:
             idx_nearest = self._get_nearest_waypoint_index(self._waypoints, pos)
-            next_wps = self._next_n(self._waypoints, LOOKAHEAD_WPS, idx_nearest+1)
+            next_wps = self._next_n(self._waypoints, LOOKAHEAD_WPS, idx_nearest+100)
+            rospy.loginfo('Position - x:%s, y:%s', pos.x, pos.y)
+            rospy.loginfo('Orientation - z:%s, w:%s', ori.z, ori.w)
+            first_wps_pos = next_wps[0].pose.pose.position
+            rospy.loginfo('First wp - x:%s, y:%s\n', first_wps_pos.x, first_wps_pos.y)
             self.publish_waypoints(next_wps)
                 
         

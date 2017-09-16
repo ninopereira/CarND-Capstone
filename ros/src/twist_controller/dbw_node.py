@@ -7,6 +7,8 @@ from geometry_msgs.msg import TwistStamped
 import math
 
 from twist_controller import Controller
+from yaw_controller import YawController
+from lowpass import LowPassFilter
 
 '''
 You can build this node only after you have built (or partially built) the `waypoint_updater` node.
@@ -53,13 +55,32 @@ class DBWNode(object):
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
 
-        # TODO: Create `TwistController` object
-        # self.controller = TwistController(<Arguments you wish to provide>)
-
+        self._controller = YawController(wheel_base, steer_ratio, 0.0, max_lat_accel, max_steer_angle)
+        self._filter = LowPassFilter(0.96, 1.0)
+        
         # TODO: Subscribe to all the topics you need to
-
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.cur_vel_cb)
+        
+        self._cur_linear_vel = 0.0
+        self._prop_linear_vel = 0.0
+        self._prop_angular_vel = 0.0
+        
         self.loop()
-
+    
+    def _calc_vec3_value(self, x, y, z):
+        return math.sqrt(x**2 + y**2 + z**2)
+    
+    def twist_cb(self, msg):
+        linear = msg.twist.linear
+        angular = msg.twist.angular
+        self._prop_linear_vel = self._calc_vec3_value(linear.x, linear.y, linear.z)
+        self._prop_angular_vel = angular.z
+        
+    def cur_vel_cb(self, msg):
+        linear = msg.twist.linear
+        self._cur_linear_vel = self._calc_vec3_value(linear.x, linear.y, linear.z)
+    
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
         while not rospy.is_shutdown():
@@ -72,6 +93,12 @@ class DBWNode(object):
             #                                                     <any other argument you need>)
             # if <dbw is enabled>:
             #   self.publish(throttle, brake, steer)
+            rospy.loginfo('Prop lin vel: %f - Prop ang vel: %f - Cur lin vel: %f',
+                self._prop_linear_vel, self._prop_angular_vel, self._cur_linear_vel)
+            steering = self._controller.get_steering(self._prop_linear_vel, 
+                self._prop_angular_vel, self._cur_linear_vel)
+            filtered_steering = self._filter.filt(steering)
+            self.publish(0.5, 0.0, filtered_steering)
             rate.sleep()
 
     def publish(self, throttle, brake, steer):
