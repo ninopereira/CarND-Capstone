@@ -3,6 +3,7 @@
 import rospy
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
+from std_msgs.msg import Int32
 
 import math
 
@@ -32,15 +33,61 @@ class WaypointUpdater(object):
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
+        self.pose = None
+        self.waypoints = []
 
+        # Loop
+        self.loop()
         rospy.spin()
 
+    def loop(self):
+        rate = rospy.Rate(4)  # 4 Hz
+        while not rospy.is_shutdown():
+
+            if self.waypoints and self.pose:
+                idx = self.get_closest_waypoint_index()
+
+                # Solve wrap around start/end of list
+                waypoints_wrap = []
+                waypoints_wrap.extend(self.waypoints)
+                waypoints_wrap.extend(self.waypoints)
+                final_waypoints = waypoints_wrap[idx:idx+LOOKAHEAD_WPS]
+
+                # pos = self.pose.position
+                # wp_pos = waypoints_wrap[idx].pose.pose.position
+
+                # rospy.loginfo('Position (x,y): (%s, %s)', pos.x, pos.y)
+                # rospy.loginfo('WP Position (x,y): (%s, %s)', wp_pos.x, wp_pos.y)
+
+                # Publish final waypoints
+                lane = Lane()
+                lane.waypoints = final_waypoints
+                self.final_waypoints_pub.publish(lane)
+
+            rate.sleep()
+
+    def get_closest_waypoint_index(self):
+        distances = []
+        for wp in self.waypoints:
+            distance = self.get_linear_distance(wp.pose.pose.position.x, wp.pose.pose.position.y,
+                                                self.pose.position.x, self.pose.position.y)
+            distances.append(distance)
+
+        index = distances.index(min(distances))
+        # TODO: Algorithm to select waypoint in front
+        index += 1
+        return index
+
+    def get_linear_distance(self, x1, y1, x2, y2):
+        return math.sqrt((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2))
+
     def pose_cb(self, msg):
+        self.pose = msg.pose
         pos = msg.pose.position # Point
         ori = msg.pose.orientation # Quaternion
         rospy.loginfo('Position (x,y): (%s, %s)', pos.x, pos.y)
@@ -49,8 +96,8 @@ class WaypointUpdater(object):
         pass
 
     def waypoints_cb(self, waypoints):
-        # TODO: Implement
-        pass
+        # Same waypoints every time?
+        self.waypoints = waypoints.waypoints
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
