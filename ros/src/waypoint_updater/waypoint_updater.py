@@ -41,6 +41,10 @@ class WaypointUpdater(object):
         rospy.spin()
 
     def pose_cb(self, msg):
+        pos = msg.pose.position # Point
+        ori = msg.pose.orientation # Quaternion
+        rospy.loginfo('Position (x,y): (%s, %s)', pos.x, pos.y)
+        rospy.loginfo('Orientation (x,y,z,w): (%s, %s, %s, %s)', ori.x, ori.y, ori.z, ori.w)
         # TODO: Implement
         pass
 
