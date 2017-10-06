@@ -144,9 +144,9 @@ A detector capable of locating traffic lights within an image is implemented. Th
 
 Two approaches were studied for the localization part:
 
-* Tensorflow's object detection API. It works very well even with the out-of-the-box models, which detect traffic lights among other objects, but processing times are too slow for real time detection. A custom trained model can solve performance problems, but there is the risk that the Tensorflow version installed in Carla is not compatible with the object detection API.
+1. Tensorflow's object detection API. It works very well even with the out-of-the-box models, which detect traffic lights among other objects, but processing times are too slow for real time detection. A custom trained model can solve performance problems, but there is the risk that the Tensorflow version installed in Carla is not compatible with the object detection API.
 
-* Use of the traffic light's 3D coordinates, camera parameters and current car pose to calculate the 2D coordinates of the traffic light within a picture. This was the main approach suggested by Udacity, according to the initial code templates, but it [proved to be more complicated than expected](https://discussions.udacity.com/t/focal-length-wrong/358568). Through some manual tweaking, we managed to develop a good enough implementation for the simulator, but the real camera requires additional effort.
+2. Use of the traffic light's 3D coordinates, camera parameters and current car pose to calculate the 2D coordinates of the traffic light within a picture. This was the main approach suggested by Udacity, according to the initial code templates, but it [proved to be more complicated than expected](https://discussions.udacity.com/t/focal-length-wrong/358568). Through some manual tweaking, we managed to develop a good enough implementation for the simulator, but the real camera requires additional effort.
 
 Once a detector is implemented, cropped pictures of traffic lights from both the simulator and the test site can be used to train a classifier. If the accuracy of the bounding boxes is good, the classifier can be pretty simple and fast. In fact, very simple models such a support vector machine or a small convolutional network were implemented, both showing accurate results.
 
@@ -200,15 +200,15 @@ The Waypoint updater also handles the traffic light state by setting the referen
 
 ```python
 if self.tf_index != -1:
-   # set speed to zero a few waypoints before the traffic_lights
-            for i in range(index_in_wp_list-MARGIN,LOOKAHEAD_WPS): 
-                list_wp_to_pub[i].twist.twist.linear.x = 0.0
-            # for wp before the target tf_index decrease speed gradually until the tf_index
-            ref_speed = 0.0
-            for i in range(index_in_wp_list-MARGIN-1, -1, -1):
-                if list_wp_to_pub[i].twist.twist.linear.x > ref_speed:
-                    list_wp_to_pub[i].twist.twist.linear.x = ref_speed
-                    ref_speed = ref_speed + 0.2
+    # set speed to zero a few waypoints before the traffic_lights
+    for i in range(index_in_wp_list-MARGIN,LOOKAHEAD_WPS): 
+        list_wp_to_pub[i].twist.twist.linear.x = 0.0
+    # for wp before the target tf_index decrease speed gradually until the tf_index
+    ref_speed = 0.0
+    for i in range(index_in_wp_list-MARGIN-1, -1, -1):
+        if list_wp_to_pub[i].twist.twist.linear.x > ref_speed:
+            list_wp_to_pub[i].twist.twist.linear.x = ref_speed
+            ref_speed = ref_speed + 0.2
 ```
 
 ### Waypoint follower
