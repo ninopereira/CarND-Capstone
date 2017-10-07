@@ -137,6 +137,110 @@ class TLDetector(object):
             distances.append(self.get_2D_euc_dist(wp_pos, pos))
         return distances.index(min(distances))
 
+    def project_to_image_plane(self, point_in_world):
+        """Project point from 3D world coordinates to 2D camera image location
+        Args:
+            point_in_world (Point): 3D location of a point in the world
+        Returns:
+            bbox_topleft (int, int): x, y coordinate of bounding box cutting out traffic light in image
+            bbox_bottomright (int, int): x, y coordinate of bounding box cutting out traffic light in image
+        """
+
+        # Focal length manually tweaked values from Udacity forum discussion:
+        # https://discussions.udacity.com/t/focal-length-wrong/358568/25
+        fx = 2574
+        fy = 2744
+        # Get focal lengths from config file alternatively:
+        #TODO: Udacity is going to provide correct values for the focal length
+        # fx = self.config['camera_info']['focal_length_x']
+        # fy = self.config['camera_info']['focal_length_y']
+        image_width = self.config['camera_info']['image_width']
+        image_height = self.config['camera_info']['image_height']
+
+        # Get transform between pose of camera and world frame
+        trans = None
+        try:
+            now = rospy.Time.now()
+            self.listener.waitForTransform("/base_link",
+                                           "/world", now, rospy.Duration(1.0))
+            (trans, rot) = self.listener.lookupTransform("/base_link",
+                                                         "/world", now)
+        except (tf.Exception, tf.LookupException, tf.ConnectivityException):
+            rospy.logerr("Failed to find camera to map transform")
+
+        # Use tranform and rotation to calculate 2D position of light in image
+        if (trans != None):
+            # Convert rotation vector from quaternion to euler:
+            euler = tf.transformations.euler_from_quaternion(rot)
+            sinyaw = math.sin(euler[2])
+            cosyaw = math.cos(euler[2])
+
+            # Rotation followed by translation
+            px = point_in_world.x
+            py = point_in_world.y
+            pz = point_in_world.z
+            xt = trans[0]
+            yt = trans[1]
+            zt = trans[2]
+            Rnt = (
+                px * cosyaw - py * sinyaw + xt,
+                px * sinyaw + py * cosyaw + yt,
+                pz + zt)
+
+            # Pinhole camera model w/o distorion
+            # Tweaked equations:
+            u = int(fx * -Rnt[1] / Rnt[0] + image_width / 2 - 30)
+            v = int(fy * -(Rnt[2] - 1.0) / Rnt[0] + image_height + 50)
+            # Original equations on translation and rotation:
+            # Source: http://planning.cs.uiuc.edu/node99.html
+            # u = int(fx * -Rnt[1]/Rnt[0] + image_width/2)
+            # v = int(fy * -Rnt[2]/Rnt[0] + image_height/2)
+
+            # Get bounding boxes in order to cut out traffic lights
+            # Traffic light's true size
+            width_true = 1.0
+            height_true = 1.95
+            # Get distance traffic light to camera/car
+            distance = self.get_2D_euc_dist(self.pose.pose.position, point_in_world)
+            # Get size of traffic light within 2D picture
+            width_apparent = 2 * fx * math.atan(width_true / (2 * distance))
+            height_apparent = 2 * fx * math.atan(height_true / (2 * distance))
+            # Get points for traffic light's bounding box
+            bbox_topleft = (int(u - width_apparent / 2), int(v - height_apparent / 2))
+            bbox_bottomright = (int(u + width_apparent / 2), int(v + height_apparent / 2))
+        else:
+            bbox_topleft = (0, 0)
+            bbox_bottomright = (0, 0)
+        return (bbox_topleft, bbox_bottomright)
+
+    def image_resize(self, scr_img, des_width, des_height):
+        """Resizes an image while keeping aspect ratio
+        Args:
+            scr_img: image input to resize
+            des_width: pixel width of output image
+            des_height: pixel height of output image
+        Returns:
+            Image: Resized image
+        """
+        #aspect_ratio_width = des_width / des_height
+        # Set manually to 0.5 because division 30/60 apparently results in 0
+        aspect_ratio_width = 0.5
+        aspect_ratio_height = des_height/des_width
+        src_height, src_width = scr_img.shape[:2]
+        crop_height = int(src_width / aspect_ratio_width)
+        height_surplus = (src_height - crop_height) / 2
+        crop_width = int(src_height / aspect_ratio_height)
+        width_surplus = (src_width - crop_width) / 2
+        # Crop image to keep aspect ratio
+        if height_surplus > 0:
+            crop_img = scr_img[int(height_surplus):(src_height-math.ceil(height_surplus)), 0:int(src_width)]
+        elif width_surplus > 0:
+            crop_img = scr_img[0:int(src_height), int(width_surplus):(src_width-math.ceil(width_surplus))]
+        else:
+            crop_img = scr_img
+        # Resize image
+        return cv2.resize(crop_img, (des_width, des_height), 0, 0, interpolation=cv2.INTER_AREA)
+    
     def get_light_state(self, light):
         """Determines the current color of the traffic light
 
@@ -152,8 +256,26 @@ class TLDetector(object):
             return False
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+        # Decide for which method is used to send images to classifier
+        extract_traffic_light = False
 
-        tl_state = self.light_classifier.get_classification(cv_image)
+        # Approach no. 1
+        # Extract traffic light from camera image
+        if extract_traffic_light:
+            # Convert given traffic light coordinates into position within 2D image
+            bbox_topleft, bbox_bottomright = self.project_to_image_plane(light.pose.pose.position)
+            # Use bounding box to extract traffic light
+            tl_image_extracted = cv_image[bbox_topleft[1]:bbox_bottomright[1], bbox_topleft[0]:bbox_bottomright[0]]
+            # Resize image for classifier to match with training data
+            tl_image = self.image_resize(tl_image_extracted, 30, 60)
+            # Forward traffic light image to classifier to get prediction
+            tl_state = self.light_classifier.get_classification(tl_image)
+
+        # Approach no. 2
+        # Use whole camera image
+        else:
+            # Forward entire image captured by camera to classifier to get prediction
+            tl_state = self.light_classifier.get_classification(cv_image)
 
         rospy.logdebug("status of traffic light: %i" % tl_state)
         return tl_state
