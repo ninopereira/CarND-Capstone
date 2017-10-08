@@ -182,19 +182,21 @@ class TLDetector(object):
             xt = trans[0]
             yt = trans[1]
             zt = trans[2]
+            # Original equations on translation and rotation:
+            # Source: http://planning.cs.uiuc.edu/node99.html
             Rnt = (
                 px * cosyaw - py * sinyaw + xt,
                 px * sinyaw + py * cosyaw + yt,
                 pz + zt)
 
-            # Pinhole camera model w/o distorion
+            # Perspective transformation based on Pinhole camera model w/o distortion
+            # Source: http://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html
+            # Original equations:
+            # u = int(fx * -Rnt[1]/Rnt[0] + image_width/2)
+            # v = int(fy * -Rnt[2]/Rnt[0] + image_height/2)
             # Tweaked equations:
             u = int(fx * -Rnt[1] / Rnt[0] + image_width / 2 - 30)
             v = int(fy * -(Rnt[2] - 1.0) / Rnt[0] + image_height + 50)
-            # Original equations on translation and rotation:
-            # Source: http://planning.cs.uiuc.edu/node99.html
-            # u = int(fx * -Rnt[1]/Rnt[0] + image_width/2)
-            # v = int(fy * -Rnt[2]/Rnt[0] + image_height/2)
 
             # Get bounding boxes in order to cut out traffic lights
             # Traffic light's true size
