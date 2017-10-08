@@ -235,9 +235,9 @@ class TLDetector(object):
         width_surplus = (src_width - crop_width) / 2
         # Crop image to keep aspect ratio
         if height_surplus > 0:
-            crop_img = scr_img[int(height_surplus):(src_height-math.ceil(height_surplus)), 0:int(src_width)]
+            crop_img = scr_img[int(height_surplus):int(src_height-math.ceil(height_surplus)), 0:int(src_width)]
         elif width_surplus > 0:
-            crop_img = scr_img[0:int(src_height), int(width_surplus):(src_width-math.ceil(width_surplus))]
+            crop_img = scr_img[0:int(src_height), int(width_surplus):int(src_width-math.ceil(width_surplus))]
         else:
             crop_img = scr_img
         # Resize image
