@@ -152,7 +152,7 @@ Two approaches were studied for the localization part:
 
 To do so we get the position of the upcoming traffic light, which is given by the simulator or has to be defined for the test track on site. Together with the car’s position and orientation (_yaw_) we first calculate the [rotation-translation matrix](http://planning.cs.uiuc.edu/node99.html), which describes the camera motion around the static traffic light (with px being traffic light’s x-position; yaw and xt being the car’s rotation and translation):
 
-```
+```python
 px * cosyaw - py * sinyaw + xt,
 px * sinyaw + py * cosyaw + yt,
 pz + zt
@@ -223,15 +223,15 @@ The Waypoint updater also handles the traffic light state by setting the referen
 
 ```python
 if self.tf_index != -1:
-   # set speed to zero a few waypoints before the traffic_lights
-            for i in range(index_in_wp_list-MARGIN,LOOKAHEAD_WPS): 
-                list_wp_to_pub[i].twist.twist.linear.x = 0.0
-            # for wp before the target tf_index decrease speed gradually until the tf_index
-            ref_speed = 0.0
-            for i in range(index_in_wp_list-MARGIN-1, -1, -1):
-                if list_wp_to_pub[i].twist.twist.linear.x > ref_speed:
-                    list_wp_to_pub[i].twist.twist.linear.x = ref_speed
-                    ref_speed = ref_speed + 0.2
+    # set speed to zero a few waypoints before the traffic_lights
+    for i in range(index_in_wp_list-MARGIN,LOOKAHEAD_WPS): 
+        list_wp_to_pub[i].twist.twist.linear.x = 0.0
+    # for wp before the target tf_index decrease speed gradually until the tf_index
+    ref_speed = 0.0
+    for i in range(index_in_wp_list-MARGIN-1, -1, -1):
+        if list_wp_to_pub[i].twist.twist.linear.x > ref_speed:
+            list_wp_to_pub[i].twist.twist.linear.x = ref_speed
+            ref_speed = ref_speed + 0.2
 ```
 
 ### Waypoint follower
