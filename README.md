@@ -122,16 +122,60 @@ Waypoint Updater | 2 Hz
 Waypoint Follower | 5 Hz
 DBW Node | 15 Hz
 
-With these settings it is possible to run the car along the track in a smooth and continuous mode with limited hardware resources. This works quite well for low speeds but as expected the low update frequencies somehow limit the maximum reference speed the car can be driven.  
+With these settings it is possible to run the car along the track in a smooth and continuous mode with limited hardware resources. This works quite well for low speeds but as expected the low update frequencies somehow limit the maximum reference speed the car can be driven.
 
 ### Car/Simulator
-Our initial strategy was to have a system that could use the simulator or the real car seamlessly. With that respect the controllers have the same settings and only the configuration values (constraints) change slightly according to whereas we are using the simulator or the car.  
+Our initial strategy was to have a system that could use the simulator or the real car seamlessly. With that respect the controllers have the same settings and only the configuration values (constraints) change slightly according to whereas we are using the simulator or the car.
 
 ### Obstacle detection
 Implemented for the real vehicle only by Carla team at Udacity.
 
 ### Traffic light detector
-A CNN classifier was trained with a mixture of images from the simulator as well as real images...
+
+The light detector module first checks if the linear distance between the next stop line, whose coordinates are known, and the car is less than seventy meters. Although traffic lights are visible and can be classified from farther , the chosen distance threshold is big enough for the car to stop in time.
+
+Traffic lights are classified in two classes: `red` and `not red`, where the latter includes green, yellow and unknown state. Pictures where there is no traffic light are classified as `not red`.
+
+Two main approaches were followed in order to detect red traffic lights: localization and classification and whole picture classification.
+
+##### Localization and classification
+
+A detector capable of locating traffic lights within an image is implemented. The detector outputs a bounding box enclosing the traffic light. Then, the region of the picture where the traffic light is located can be extracted and fed to a classifier.
+
+Two approaches were studied for the localization part:
+
+1. Tensorflow's object detection API. It works very well even with the out-of-the-box models, which detect traffic lights among other objects, but processing times are too slow for real time detection. A custom trained model can solve performance problems, but there is the risk that the Tensorflow version installed in Carla is not compatible with the object detection API.
+
+2. When the project got released for CarND the first time, Udacity suggested a _Computer Vision_ approach to identify traffic lights within the images captured by the car’s camera. Assuming a _pinhole camera model_ (as pictured below, source: [docs.opencv.org](http://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html)) the goal is to project the position of a 3D-world object onto the 2D-image captured by the car’s camera.
+
+![Image: Pinhole Camera Model by docs.opencv.org](pinhole_camera_model.png?raw=true "Pinhole Camera Model by docs.opencv.org")
+
+To do so we get the position of the upcoming traffic light, which is given by the simulator or has to be defined for the test track on site. Together with the car’s position and orientation (_yaw_) we first calculate the [rotation-translation matrix](http://planning.cs.uiuc.edu/node99.html), which describes the camera motion around the static traffic light (with px being traffic light’s x-position; yaw and xt being the car’s rotation and translation):
+
+```python
+px * cosyaw - py * sinyaw + xt,
+px * sinyaw + py * cosyaw + yt,
+pz + zt
+```
+Assuming a pinhole camera model without distortion we then apply a [perspective transformation](http://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html) derived from following equations:
+
+![Image: Perspective Transformation](perspective_transform.png?raw=true "Perspective Transformation")
+
+Due to some issues with applying the provided focal lengths to the simulator (Unity engine), equations and values had to be tweaked manually, which was elaborated during a [discussion on the Udacity CarND forum](https://discussions.udacity.com/t/focal-length-wrong/358568/25).
+
+To cut out the whole traffic light we finally define a bounding box based on the real size of a traffic light, the Euclidean distance between both objects and the focal length (derived from [google’s paper on Traffic Light Mapping and Detection from 2011](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/37259.pdf))
+
+![Image: Identifying traffic light in simulator’s camera image](extracting_traffic_light.jpg?raw=true "Identifying traffic light in simulator’s camera image")
+
+Once a detector is implemented, cropped pictures of traffic lights from both the simulator and the test site can be used to train a classifier. If the accuracy of the bounding boxes is good, the classifier can be pretty simple and fast. In fact, very simple models such a _Support Vector Machine_ (SVM) or a small _Convolutional Neural Network_ (CNN) were implemented, both showing accurate results.
+
+Unfortunately, due to the problems described above, we switched to a whole picture approach, which needs a considerably more complex classifier, but eliminates the need of an object detector. For further experiments the _Support Vector Classifier_ (SVC) can be setup by renaming `tl_classifier_SVC.py` to `tl_classifier.py` and then activating `project_to_image_plane` function by setting _True_ the `extract_traffic_light` variable within `tl_detection.py` . 
+
+##### Whole picture classification
+
+Contrary to the approaches discussed above the final version of the presented classifier does not require any transformation and localization of the actual traffic lights within the camera image. An involved _Convolutional Neural Network_ (CNN) was created and trained on camera images from the simulator as well as camera data provided by Udacity from the actual test site. The networks architecture was then improved and parameters were tuned extensively in order to achieve a degree of generalization that enables our classifier to predict red lights with equal accuracy, wether they were captured on site or within the simulator. 
+
+![Image: Results of whole picture approach on camera images from site](whole_picture_classification.png?raw=true "Results of whole picture approach on camera images from site")
 
 ### Waypoint loader
 The update frequency was removed and this node only publishes one message at the start to reduce the overhead to a minimum. The list of base waypoints forms an enclosed path along a track.
@@ -179,15 +223,15 @@ The Waypoint updater also handles the traffic light state by setting the referen
 
 ```python
 if self.tf_index != -1:
-   # set speed to zero a few waypoints before the traffic_lights
-            for i in range(index_in_wp_list-MARGIN,LOOKAHEAD_WPS): 
-                list_wp_to_pub[i].twist.twist.linear.x = 0.0
-            # for wp before the target tf_index decrease speed gradually until the tf_index
-            ref_speed = 0.0
-            for i in range(index_in_wp_list-MARGIN-1, -1, -1):
-                if list_wp_to_pub[i].twist.twist.linear.x > ref_speed:
-                    list_wp_to_pub[i].twist.twist.linear.x = ref_speed
-                    ref_speed = ref_speed + 0.2
+    # set speed to zero a few waypoints before the traffic_lights
+    for i in range(index_in_wp_list-MARGIN,LOOKAHEAD_WPS): 
+        list_wp_to_pub[i].twist.twist.linear.x = 0.0
+    # for wp before the target tf_index decrease speed gradually until the tf_index
+    ref_speed = 0.0
+    for i in range(index_in_wp_list-MARGIN-1, -1, -1):
+        if list_wp_to_pub[i].twist.twist.linear.x > ref_speed:
+            list_wp_to_pub[i].twist.twist.linear.x = ref_speed
+            ref_speed = ref_speed + 0.2
 ```
 
 ### Waypoint follower
@@ -200,31 +244,29 @@ The Drive by Wire node is part of the control layer which interfaces directly wi
 
 The steering control was implemented independently of the throttle and braking control.
 
-
 The steering is limited by a maximum steering angle which is a constraint of the system. Given the desired linear and angular velocities together with the current linear velocity the get_steering function outputs the steering command to be applied directly to the system.
 
-
-	steer = self.yaw_control.get_steering(self.des_linear_velocity, self.des_angular_velocity, self.cur_linear_velocity)
-
-        
+```python
+steer = self.yaw_control.get_steering(self.des_linear_velocity, self.des_angular_velocity, self.cur_linear_velocity)
+```
 
 The throttle command is controlled by a PID controller. The PID parameters were manually tuned (Kp=0.8, Ki=0.25, Kd=0.1).
+```python
+# Set once at the beginning
+self.throttle_control = Controller(pid_kp=0.8, pid_ki=0.25, pid_kd=0.1,
+                                   min_value=self.decel_limit, max_value=self.accel_limit)
 
-	# set once at the beginning
-        self.throttle_control = Controller(pid_kp=0.8, pid_ki=0.25, pid_kd=0.1,
-                                           min_value=self.decel_limit, max_value=self.accel_limit)
-
-
-        # pid for acceleration
-        throttle, brake, steering = self.throttle_control.control(self.des_linear_velocity,
-                                                                      self.cur_linear_velocity, self.dbw_enabled)
-
+# pid for acceleration
+throttle, brake, steering = self.throttle_control.control(self.des_linear_velocity,
+                                                          self.cur_linear_velocity,
+                                                          self.dbw_enabled)
+```
 A low pass filter was implemented to smooth throttle commands according to the following the equation:
 
 ![Low Pass filter equation](imgs/filter_eq.png)
 
 
-This filter as any filter of this nature produces a smoother transition but also some delay in response time as shown in the picture below. 
+This filter as any filter of this nature produces a smoother transition but also some delay in response time as shown in the picture below.
 
 ![Low Pass filter equation](imgs/filter.png)
 
@@ -233,33 +275,34 @@ Since breaking corresponds to a deceleration which in turn is just a negative th
 
 Brake commands are published as torque values and calculated as:
 brake = vehicle_mass * deceleration * wheel_radius
-
-        if throttle < -self.brake_deadband:
-            brake = self.vehicle_mass * abs(throttle) * self.wheel_radius
-                
+```python
+if throttle < -self.brake_deadband:
+    brake = self.vehicle_mass * abs(throttle) * self.wheel_radius
+```
 
 The auto/manual mode is toggled by the operator and the DBW node receives its status through a variable dbw_enabled. In order to prevent obsolete proportional, differential and specially PID integral errors to influence the behaviour the PID error values are reset every time the manual mode gets active. This way once auto mode is enabled again the PID controller starts fresh and responsive.
 
 The reset function is called inside control function in twist_controller file.
-
-	if dbw_enabled:
-		...
-	else:
-	    self.reset()
-
+```python
+if dbw_enabled:
+    ...
+else:
+    self.reset()
+```
 
 Safety critical failures were handled with a watchdog mechanism in the same way as before by stopping the car safely if the expected messages are not received within a reasonable time frame. In this case failure to receive updated current velocity, current pose or the final waypoints before the watchdog periodic check leads to the decision of making the car stop as soon as possible. This is achieved indirectly by setting the desired linear speed to zero in order to let the controller bring the car to a smooth stop. 
 
-    if (self.current_timestamp - self.vel_timestamp).nsecs > self.watchdog_limit:
-        # stop the car
-        rospy.logwarn("Safety hazard: not receiving VEL info for long time. Stopping the vehicle!")
-        self.des_linear_velocity = 0
-        
-    if  (self.current_timestamp - self.twist_cmd_timestamp).nsecs > self.watchdog_limit:
-        # stop the car
-        rospy.logwarn("Safety hazard: not receiving TWIST_CMD info for long time. Stopping the vehicle!")
-        self.des_linear_velocity = 0
+```python
+if (self.current_timestamp - self.vel_timestamp).nsecs > self.watchdog_limit:
+    # Stop the car
+    rospy.logwarn("Safety hazard: not receiving VEL info for long time. Stopping the vehicle!")
+    self.des_linear_velocity = 0
 
+if  (self.current_timestamp - self.twist_cmd_timestamp).nsecs > self.watchdog_limit:
+    # Stop the car
+    rospy.logwarn("Safety hazard: not receiving TWIST_CMD info for long time. Stopping the vehicle!")
+    self.des_linear_velocity = 0
+```
 
 
 ## Conclusions
@@ -277,7 +320,7 @@ Here is a list of potential improvements and other things to try:
 ## Instructions
 
 ### Run
-```
+```bash
 catkin_make & source devel/setup.bash & roslaunch launch/styx.launch
 ```
 Then launch the simulator
