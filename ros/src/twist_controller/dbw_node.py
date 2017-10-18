@@ -32,7 +32,7 @@ Once you have the proposed throttle, brake, and steer values, publish it on the 
 that we have created in the `__init__` function.
 
 '''
-DBW_UPDATE_RATE = 15
+DBW_UPDATE_RATE = 30
 
 class DBWNode(object):
     def __init__(self):
@@ -44,6 +44,7 @@ class DBWNode(object):
         self.decel_limit = rospy.get_param('~decel_limit', -5)
         self.accel_limit = rospy.get_param('~accel_limit', 1.)
         self.wheel_radius = rospy.get_param('~wheel_radius', 0.2413)
+
         wheel_base = rospy.get_param('~wheel_base', 2.8498)
         steer_ratio = rospy.get_param('~steer_ratio', 14.8)
         max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
@@ -75,6 +76,11 @@ class DBWNode(object):
         # current velocity
         self.cur_linear_velocity = 0.0
         self.cur_angular_velocity = 0.0
+
+        self.prev_throttle = 0.0
+        self.prev_braking = 0.0
+        self.smooth_throttle_change = 0.005
+        self.smooth_breaking_change= 0.05
 
         # watchdogs for safety critical handling
         self.current_timestamp = rospy.Time.now()
@@ -158,10 +164,25 @@ class DBWNode(object):
             if throttle < 0.001: # very small number
                 # TODO: maybe verify the units
                 if throttle < -self.brake_deadband:
-                    brake = self.vehicle_mass * abs(throttle) * self.wheel_radius
+                    braking = abs(throttle)
+                    if braking > (self.prev_braking + self.smooth_breaking_change):
+                        braking = self.prev_braking + self.smooth_breaking_change
+                    self.prev_braking = braking
+                    brake = self.vehicle_mass * braking * self.wheel_radius
+                else:
+                    brake = 0
+
                 throttle = 0
+                self.throttle_control.reset()
+                self.prev_throttle = 0
             else:
                 brake = 0
+                self.prev_braking = 0
+                # smooth acceleration only
+                if throttle > (self.prev_throttle + self.smooth_throttle_change):
+                    throttle = self.prev_throttle + self.smooth_throttle_change
+                self.prev_throttle = throttle
+                self.prev_braking = 0
 
             # after getting the acceleration from PID, filter it using low_pass
             throttle = self.lp_filter.filt(throttle)

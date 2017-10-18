@@ -25,7 +25,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 50  # Number of waypoints to publish
-WP_UPDATE_RATE = 2; # processing frequency
+WP_UPDATE_RATE = 10; # processing frequency
 REF_VEL = 4.47
 def to_deg(angle):
     return angle*180.0/math.pi
@@ -278,7 +278,7 @@ class WaypointUpdater(object):
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
-        # rospy.loginfo("traffic_cb msg = %s",msg.data)
+        #rospy.loginfo("traffic_cb msg = %s",msg.data)
         self.tf_index = msg.data
         self.tf_timestamp = rospy.Time.now()
         return

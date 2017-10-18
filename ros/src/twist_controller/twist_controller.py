@@ -29,7 +29,7 @@ class Controller(object):
 
             if self.pid_is_reset:
                 self.pid_is_reset = False
-                rospy.logwarn("PID control Enabled")
+                #rospy.logwarn("PID control Enabled")
         else:
             self.reset()
             return 0, 0, 0  # Does not matter as it won't be used
@@ -42,5 +42,5 @@ class Controller(object):
     def reset(self):
         if not self.pid_is_reset:
             self.pid_controller.reset()
-            rospy.logwarn("PID control Reset and Stopped")
+            #rospy.logwarn("PID control Reset and Stopped")
             self.pid_is_reset = True

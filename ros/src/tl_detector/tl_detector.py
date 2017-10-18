@@ -280,6 +280,7 @@ class TLDetector(object):
             tl_state = self.light_classifier.get_classification(cv_image)
 
         rospy.logdebug("status of traffic light: %i" % tl_state)
+
         return tl_state
 
     def process_traffic_lights(self):
