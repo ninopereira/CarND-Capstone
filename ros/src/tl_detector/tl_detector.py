@@ -185,7 +185,7 @@ class TLDetector(object):
         x, y = self.project_to_image_plane(light.pose.pose.position)
 
         #TODO use light location to zoom in on traffic light in image
-	tl_state = self.light_classifier.get_classification(cv_image)
+        tl_state = self.light_classifier.get_classification(cv_image)
 
         print("status of traffic light: %i" % tl_state)
         #Get classification
