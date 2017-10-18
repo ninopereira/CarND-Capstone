@@ -79,7 +79,7 @@ class DBWNode(object):
 
         self.prev_throttle = 0.0
         self.prev_braking = 0.0
-        self.smooth_throttle_change = 10.005
+        self.smooth_throttle_change = 0.005
         self.smooth_breaking_change= 0.05
 
         # watchdogs for safety critical handling
